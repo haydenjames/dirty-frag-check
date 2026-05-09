@@ -127,15 +127,17 @@ for d in /etc/modprobe.d /usr/lib/modprobe.d /lib/modprobe.d /run/modprobe.d; do
 done
 
 # KernelCare livepatch state (CloudLinux / TuxCare ELS / KernelCare+)
+kc_present=0
 kc_patched=0
 if command -v kcarectl >/dev/null 2>&1; then
     kc_info=$(kcarectl --patch-info 2>/dev/null)
+    [ -n "$kc_info" ] && kc_present=1
     if echo "$kc_info" | grep -qiE 'CVE-2026-43284|CVE-2026-43500|dirty.?frag'; then
         say "    ${G}KernelCare livepatch applied for Dirty Frag${N}"
         kc_patched=1
         found=1
-    elif [ -n "$kc_info" ]; then
-        say "    KernelCare present, no Dirty Frag patch listed yet"
+    elif [ "$kc_present" -eq 1 ]; then
+        say "    ${Y}KernelCare present, no Dirty Frag patch listed yet${N}"
     fi
 fi
 
@@ -246,9 +248,71 @@ for m in $loaded_list $available_list; do
 done
 [ -z "$loaded_list$available_list" ] && all_blocked=0
 
+stopgap_block() {
+    say "Stopgap (blacklist the affected modules):"
+    say "    cat > /etc/modprobe.d/disable-dirty-frag.conf <<EOF"
+    say "    install esp4 /bin/false"
+    say "    install esp6 /bin/false"
+    say "    install ipcomp /bin/false"
+    say "    install ipcomp6 /bin/false"
+    say "    install rxrpc /bin/false"
+    say "    EOF"
+    say "    rmmod rxrpc ipcomp6 ipcomp esp6 esp4 2>/dev/null"
+}
+upgrade_cmd() {
+    if   command -v dnf >/dev/null 2>&1; then say "    dnf update kernel -y && reboot"
+    elif command -v yum >/dev/null 2>&1; then say "    yum update kernel -y && reboot"
+    elif command -v apt >/dev/null 2>&1; then say "    apt update && apt upgrade -y && reboot"
+    fi
+}
+
+# Strongest signals first.
 if [ "$kc_patched" -eq 1 ]; then
     verdict_text="${G}OK${N} - KernelCare livepatch covers Dirty Frag"
     exit_code=0
+elif [ "$kver_ok" -eq 0 ] && [ "$all_blocked" -eq 1 ] && [ -z "$loaded_list" ]; then
+    # kernel is unpatched, but every reach-in module is blocked
+    verdict_text="${Y}MITIGATED${N} - kernel older than fix, vulnerable modules blacklisted"
+    say "$verdict_text"
+    say ""
+    say "Modules cannot load, so the unpatched kernel can't be reached. Patch when you can:"
+    upgrade_cmd
+    exit_code=0
+elif [ "$kver_ok" -eq 0 ] && [ -n "$loaded_list" ]; then
+    verdict_text="${R}VULNERABLE${N} - kernel older than fix, modules loaded ($loaded_list)"
+    say "$verdict_text"
+    say ""
+    say "Fix:"
+    upgrade_cmd
+    say ""
+    stopgap_block
+    exit_code=1
+elif [ "$kver_ok" -eq 0 ]; then
+    verdict_text="${R}VULNERABLE${N} - running kernel is older than the published fix"
+    say "$verdict_text"
+    say ""
+    say "Fix:"
+    upgrade_cmd
+    say ""
+    stopgap_block
+    exit_code=1
+elif [ "$pending_reboot" -eq 1 ]; then
+    verdict_text="${Y}REBOOT NEEDED${N} - newer kernel installed, reboot to activate"
+    say "$verdict_text"
+    say ""
+    say "Run: reboot"
+    exit_code=1
+elif [ "$kc_present" -eq 1 ] && [ "$kc_patched" -eq 0 ]; then
+    # KernelCare-managed but the patch isn't in the livepatch set yet.
+    # On these hosts the kernel package usually trails; livepatch is the canonical fix.
+    verdict_text="${R}AT RISK${N} - KernelCare-managed host, Dirty Frag livepatch not yet applied"
+    say "$verdict_text"
+    say ""
+    say "On KernelCare/TuxCare-managed hosts the fix arrives via livepatch."
+    say "Re-check later (kcarectl --update; kcarectl --patch-info)."
+    say ""
+    stopgap_block
+    exit_code=1
 elif [ "$kver_ok" -eq 1 ] && [ -z "$loaded_list" ]; then
     verdict_text="${G}OK${N} - kernel at/after fixed version, no vulnerable modules loaded"
     exit_code=0
@@ -256,71 +320,62 @@ elif [ "$kver_ok" -eq 1 ]; then
     verdict_text="${G}LIKELY PATCHED${N} - kernel at/after fixed version (modules loaded but running kernel contains the fix)"
     say "$verdict_text"
     exit_code=0
-elif [ "$pending_reboot" -eq 1 ]; then
-    verdict_text="${Y}REBOOT NEEDED${N} - newer kernel installed, reboot to activate"
-    say "$verdict_text"
-    say ""
-    say "Run: reboot"
-    exit_code=1
 elif [ "$all_blocked" -eq 1 ] && [ -z "$loaded_list" ]; then
     verdict_text="${G}OK${N} - all relevant modules blacklisted, cannot load"
     exit_code=0
 elif [ -n "$loaded_list" ]; then
-    if [ "$on_latest" -eq 1 ] && [ "$kver_ok" -ne 0 ]; then
-        verdict_text="${Y}LIKELY PATCHED${N} - vulnerable modules loaded ($loaded_list), but running kernel is up to date"
+    if [ "$on_latest" -eq 1 ]; then
+        verdict_text="${Y}LIKELY PATCHED${N} - modules loaded ($loaded_list), no kernel upgrade pending"
         say "$verdict_text"
         say ""
-        say "This script can't introspect a loaded module to tell a patched"
-        say "version from a vulnerable one. If your distro shipped a fix in"
-        say "the running kernel, you're fine. Confirm via:"
-        say "  https://access.redhat.com/security/cve/CVE-2026-43284"
+        say "Can't introspect a loaded module's patch level. Verify against your distro's tracker:"
         say "  https://ubuntu.com/security/CVE-2026-43284"
+        say "  https://access.redhat.com/security/cve/CVE-2026-43284"
         exit_code=1
     else
-        verdict_text="${R}VULNERABLE${N} - loaded: $loaded_list"
+        verdict_text="${R}VULNERABLE${N} - modules loaded ($loaded_list), kernel upgrade available"
         say "$verdict_text"
         say ""
         say "Fix:"
-        if   command -v dnf >/dev/null 2>&1; then say "    dnf update kernel -y && reboot"
-        elif command -v yum >/dev/null 2>&1; then say "    yum update kernel -y && reboot"
-        elif command -v apt >/dev/null 2>&1; then say "    apt update && apt upgrade -y && reboot"
-        fi
-        say "Or as a stopgap (blacklist the affected modules):"
-        say "    cat > /etc/modprobe.d/disable-dirty-frag.conf <<EOF"
-        say "    install esp4 /bin/false"
-        say "    install esp6 /bin/false"
-        say "    install ipcomp /bin/false"
-        say "    install ipcomp6 /bin/false"
-        say "    install rxrpc /bin/false"
-        say "    EOF"
-        say "    rmmod rxrpc ipcomp6 ipcomp esp6 esp4 2>/dev/null"
+        upgrade_cmd
+        say ""
+        stopgap_block
         exit_code=1
     fi
-elif [ -n "$available_list" ] && [ "$on_latest" -eq 1 ] && [ "$kver_ok" -ne 0 ]; then
-    # Distros without a baked-in fixed-version table (Ubuntu/Debian, etc.):
-    # if package manager says we're current, modules ship as available on
-    # every host — that's normal, not vulnerable. Defer to vendor metadata.
-    verdict_text="${Y}LIKELY PATCHED${N} - running kernel is up to date"
+elif [ -n "$available_list" ] && [ "$on_latest" -eq 1 ]; then
+    # No fixed-version table for this distro (Ubuntu/Debian, etc.). Modules
+    # ship as available on every host — normal, not vulnerable. Honest verdict
+    # is "we couldn't verify"; tell the user to cross-reference USN.
+    case "${distro_id:-}" in
+        ubuntu|debian) tracker_url="https://ubuntu.com/security/CVE-2026-43284" ;;
+        *)             tracker_url="https://access.redhat.com/security/cve/CVE-2026-43284" ;;
+    esac
+    verdict_text="${Y}UNKNOWN${N} - no kernel upgrade pending, but no fixed-version table for this distro"
     say "$verdict_text"
     say ""
-    say "This script can't introspect a loaded module to tell a patched"
-    say "version from a vulnerable one. Confirm against your distro's tracker:"
-    say "  https://ubuntu.com/security/CVE-2026-43284"
-    say "  https://access.redhat.com/security/cve/CVE-2026-43284"
-    exit_code=0
+    say "Running: $kernel"
+    say "Cross-reference your distro tracker to confirm the fix is in this kernel:"
+    say "  $tracker_url"
+    exit_code=2
 elif [ -n "$available_list" ]; then
-    verdict_text="${Y}AT RISK${N} - vulnerable modules available, not blacklisted"
+    verdict_text="${Y}AT RISK${N} - vulnerable modules available, kernel upgrade pending"
     say "$verdict_text"
     say ""
-    say "Either patch the kernel or blacklist the modules. See README."
+    say "Fix:"
+    upgrade_cmd
+    say ""
+    stopgap_block
     exit_code=1
 else
     verdict_text="${Y}UNKNOWN${N} - manual check needed"
+    say "$verdict_text"
     exit_code=2
 fi
 
+# Branches that don't say verdict_text inline get it printed here.
+# (kc_patched OK, kver_ok=1+no loaded OK, all_blocked+no loaded OK)
 case "$verdict_text" in
-    *OK*|*UNKNOWN*) say "$verdict_text" ;;
+    *"OK"*) say "$verdict_text" ;;
 esac
 
 say ""
