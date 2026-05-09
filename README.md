@@ -72,7 +72,8 @@ required for the check itself. Applying mitigations does need root.
 - **OK** — KernelCare livepatch is applied, the running kernel is at or after the published fix, or all relevant modules are blacklisted.
 - **MITIGATED** — running kernel is older than the published fix, but every reach-in module is blacklisted, so the kernel bug can't be triggered. Patch when you can.
 - **REBOOT NEEDED** — patched kernel installed, you're still on the old one.
-- **VULNERABLE** — running kernel is verified older than the fix, or vulnerable modules are loaded with a kernel upgrade pending.
+- **VULNERABLE** — running kernel is older than the fix and a kernel upgrade is available, or vulnerable modules are loaded with a kernel upgrade pending.
+- **WAITING ON VENDOR PATCH** — running kernel is older than the upstream-published fix, but no kernel upgrade is currently available from your distro. Common on Rocky/CloudLinux when they trail AlmaLinux by a build, or when the distro has backported under a different version string. Cross-reference the distro tracker.
 - **AT RISK** — KernelCare-managed host where the Dirty Frag livepatch hasn't been applied yet, or vulnerable modules are available with a kernel upgrade pending.
 - **LIKELY PATCHED** — modules loaded but the running kernel is at/after the published fix (RHEL family) or no kernel upgrade is pending. The script can't introspect a loaded module's patch level; defers to vendor metadata.
 - **UNKNOWN** — no fixed-version table for this distro and no other strong signal. Cross-reference your distro's tracker to be sure.

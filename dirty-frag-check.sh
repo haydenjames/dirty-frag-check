@@ -278,8 +278,19 @@ elif [ "$kver_ok" -eq 0 ] && [ "$all_blocked" -eq 1 ] && [ -z "$loaded_list" ]; 
     say "Modules cannot load, so the unpatched kernel can't be reached. Patch when you can:"
     upgrade_cmd
     exit_code=0
+elif [ "$kver_ok" -eq 0 ] && [ -n "$loaded_list" ] && [ "$on_latest" -eq 1 ]; then
+    # Vendor lag: distro hasn't shipped the fix yet (or backports under a different build).
+    verdict_text="${R}WAITING ON VENDOR PATCH${N} - kernel older than upstream fix, modules loaded ($loaded_list), no kernel upgrade available"
+    say "$verdict_text"
+    say ""
+    say "Either your distro hasn't shipped the patched build yet, or it has"
+    say "backported the fix under a different version. Cross-reference:"
+    say "  https://access.redhat.com/security/cve/CVE-2026-43284"
+    say ""
+    stopgap_block
+    exit_code=1
 elif [ "$kver_ok" -eq 0 ] && [ -n "$loaded_list" ]; then
-    verdict_text="${R}VULNERABLE${N} - kernel older than fix, modules loaded ($loaded_list)"
+    verdict_text="${R}VULNERABLE${N} - kernel older than fix, modules loaded ($loaded_list), kernel upgrade available"
     say "$verdict_text"
     say ""
     say "Fix:"
@@ -287,8 +298,24 @@ elif [ "$kver_ok" -eq 0 ] && [ -n "$loaded_list" ]; then
     say ""
     stopgap_block
     exit_code=1
+elif [ "$kver_ok" -eq 0 ] && [ "$on_latest" -eq 1 ]; then
+    # Vendor lag: kernel is older than the AlmaLinux-published fix, but
+    # no upgrade is available. Common on Rocky/CloudLinux which can trail
+    # AlmaLinux by a build, or when the distro has backported under a
+    # different version string. Don't claim VULNERABLE — we can't tell.
+    verdict_text="${Y}WAITING ON VENDOR PATCH${N} - kernel older than upstream fix, no kernel upgrade available"
+    say "$verdict_text"
+    say ""
+    say "Either your distro hasn't shipped the patched build yet, or it has"
+    say "backported the fix under a different version. Cross-reference:"
+    say "  https://access.redhat.com/security/cve/CVE-2026-43284"
+    say ""
+    say "Re-check later: dnf check-update kernel"
+    say ""
+    stopgap_block
+    exit_code=1
 elif [ "$kver_ok" -eq 0 ]; then
-    verdict_text="${R}VULNERABLE${N} - running kernel is older than the published fix"
+    verdict_text="${R}VULNERABLE${N} - running kernel is older than the published fix, kernel upgrade available"
     say "$verdict_text"
     say ""
     say "Fix:"
