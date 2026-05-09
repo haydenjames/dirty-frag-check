@@ -3,25 +3,23 @@
 Read-only checker for the "Dirty Frag" Linux kernel local-root vulns
 ([CVE-2026-43284](https://access.redhat.com/security/cve/CVE-2026-43284),
 [CVE-2026-43500](https://access.redhat.com/security/cve/CVE-2026-43500)).
-Looks at running kernel version vs the vendor-published fix, the load
-state of the affected IPsec / AF\_RXRPC modules, KernelCare livepatch
-state, and any modprobe blacklist you've put in place, then prints a
-verdict. It does not run exploit code.
+Checks kernel version, module state, KernelCare livepatch, and any
+modprobe blacklist you've added. Doesn't run exploit code.
 
 Companion to [CVE-2026-31431-check](https://github.com/haydenjames/CVE-2026-31431-check).
+
+![Example output on AlmaLinux 8.10](docs/example-output.png)
 
 > Heads up: this is a heuristic. A green verdict isn't a guarantee. Cross-reference
 > with your distro's advisory before you call a host safe. MIT, no warranty.
 
 ## Quick run
 
-Always-latest release (recommended — auto-tracks bug fixes):
-
 ```bash
 curl -fsSL https://github.com/haydenjames/dirty-frag-check/releases/latest/download/dirty-frag-check.sh | bash
 ```
 
-If you'd rather read it first (sensible on production):
+Read it first if you don't trust piping to bash:
 
 ```bash
 curl -fsSLO https://github.com/haydenjames/dirty-frag-check/releases/latest/download/dirty-frag-check.sh
@@ -29,11 +27,9 @@ less dirty-frag-check.sh
 chmod +x dirty-frag-check.sh && ./dirty-frag-check.sh
 ```
 
-For change-control or audit (immutable, won't pick up future fixes), pin
-to a specific release tag instead — e.g.
-`https://raw.githubusercontent.com/haydenjames/dirty-frag-check/v1.0.0/dirty-frag-check.sh`.
+Pin to a release tag for change control: `https://raw.githubusercontent.com/haydenjames/dirty-frag-check/v1.0.4/dirty-frag-check.sh`.
 
-`-q` gives a one-line summary for fleet runs. `-h` for help. Exit 0 ok, 1 vulnerable, 2 unknown.
+`-q` for one-line fleet output. `-h` for help. Exit 0 ok, 1 vulnerable, 2 unknown.
 
 ## Fleet usage
 
@@ -69,14 +65,14 @@ required for the check itself. Applying mitigations does need root.
 
 ## Verdicts
 
-- **OK** — KernelCare livepatch is applied, the running kernel is at or after the published fix, or all relevant modules are blacklisted.
-- **MITIGATED** — running kernel is older than the published fix, but every reach-in module is blacklisted, so the kernel bug can't be triggered. Patch when you can.
+- **OK** — KernelCare livepatch applied, running kernel at/after the published fix, or all relevant modules blacklisted.
+- **MITIGATED** — kernel is unpatched but every reach-in module is blacklisted, so the bug can't be triggered. Patch when you can.
 - **REBOOT NEEDED** — patched kernel installed, you're still on the old one.
-- **VULNERABLE** — running kernel is older than the fix and a kernel upgrade is available, or vulnerable modules are loaded with a kernel upgrade pending.
-- **WAITING ON VENDOR PATCH** — running kernel is older than the upstream-published fix, but no kernel upgrade is currently available from your distro. Common on Rocky/CloudLinux when they trail AlmaLinux by a build, or when the distro has backported under a different version string. Cross-reference the distro tracker.
-- **AT RISK** — KernelCare-managed host where the Dirty Frag livepatch hasn't been applied yet, or vulnerable modules are available with a kernel upgrade pending.
-- **LIKELY PATCHED** — modules loaded but the running kernel is at/after the published fix (RHEL family) or no kernel upgrade is pending. The script can't introspect a loaded module's patch level; defers to vendor metadata.
-- **UNKNOWN** — no fixed-version table for this distro and no other strong signal. Cross-reference your distro's tracker to be sure.
+- **VULNERABLE** — running kernel verified older than the fix and a kernel upgrade is available, or modules loaded with an upgrade pending.
+- **WAITING ON VENDOR PATCH** — running kernel older than the upstream fix, no kernel upgrade currently available. Common on Rocky/CloudLinux trailing AlmaLinux by a build, or when the distro backports under a different version string.
+- **AT RISK** — KernelCare-managed host without the Dirty Frag livepatch yet, or modules available with an upgrade pending.
+- **LIKELY PATCHED** — modules loaded but the running kernel is at/after the published fix. Script can't introspect a loaded module's patch level; defers to vendor metadata.
+- **UNKNOWN** — no fixed-version table for this distro (Ubuntu, Debian, TuxCare ELS) and no other strong signal. Cross-reference the distro tracker.
 
 ## Stopgap mitigation
 
