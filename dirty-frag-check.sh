@@ -376,19 +376,22 @@ elif [ -n "$loaded_list" ]; then
         exit_code=1
     fi
 elif [ -n "$available_list" ] && [ "$on_latest" -eq 1 ]; then
-    # No fixed-version table for this distro (Ubuntu/Debian, etc.). Modules
-    # ship as available on every host — normal, not vulnerable. Honest verdict
-    # is "we couldn't verify"; tell the user to cross-reference USN.
-    case "${distro_id:-}" in
-        ubuntu|debian) tracker_url="https://ubuntu.com/security/CVE-2026-43284" ;;
-        *)             tracker_url="https://access.redhat.com/security/cve/CVE-2026-43284" ;;
-    esac
-    verdict_text="${Y}UNKNOWN${N} - no kernel upgrade pending, but no fixed-version table for this distro"
+    # No fixed-version table for this distro (Ubuntu/Debian, TuxCare ELS, etc.).
+    # Modules ship as available on every host — normal, not vulnerable.
+    # Honest verdict is "we couldn't verify"; point to the right tracker.
+    verdict_text="${Y}UNKNOWN${N} - kernel patch status not verifiable from version alone"
     say "$verdict_text"
     say ""
     say "Running: $kernel"
-    say "Cross-reference your distro tracker to confirm the fix is in this kernel:"
-    say "  $tracker_url"
+    say "Cross-reference to confirm the fix is in this kernel:"
+    if [ "$els" = "TuxCare ELS" ]; then
+        say "  https://tuxcare.com/cve/CVE-2026-43284"
+        say "  (TuxCare ELS uses its own backport versioning; upstream version comparison won't apply.)"
+    elif [ "${distro_id:-}" = "ubuntu" ] || [ "${distro_id:-}" = "debian" ]; then
+        say "  https://ubuntu.com/security/CVE-2026-43284"
+    else
+        say "  https://access.redhat.com/security/cve/CVE-2026-43284"
+    fi
     exit_code=2
 elif [ -n "$available_list" ]; then
     verdict_text="${Y}AT RISK${N} - vulnerable modules available, kernel upgrade pending"
