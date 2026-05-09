@@ -270,13 +270,19 @@ upgrade_cmd() {
 if [ "$kc_patched" -eq 1 ]; then
     verdict_text="${G}OK${N} - KernelCare livepatch covers Dirty Frag"
     exit_code=0
-elif [ "$kver_ok" -eq 0 ] && [ "$all_blocked" -eq 1 ] && [ -z "$loaded_list" ]; then
-    # kernel is unpatched, but every reach-in module is blocked
-    verdict_text="${Y}MITIGATED${N} - kernel older than fix, vulnerable modules blacklisted"
+elif [ "$all_blocked" -eq 1 ] && [ -z "$loaded_list" ] && [ -n "$available_list" ]; then
+    # Every reach-in module is blacklisted and none are loaded.
+    # Bug can't be triggered regardless of kernel patch state.
+    verdict_text="${Y}MITIGATED${N} - vulnerable modules blacklisted, cannot load"
     say "$verdict_text"
     say ""
-    say "Modules cannot load, so the unpatched kernel can't be reached. Patch when you can:"
-    upgrade_cmd
+    if [ "$kver_ok" -eq 0 ]; then
+        say "Kernel is older than the published fix. Patch when you can:"
+        upgrade_cmd
+    elif [ "$kc_present" -eq 1 ]; then
+        say "KernelCare livepatch for Dirty Frag not yet applied. Re-check later:"
+        say "    kcarectl --update && kcarectl --patch-info"
+    fi
     exit_code=0
 elif [ "$kver_ok" -eq 0 ] && [ -n "$loaded_list" ] && [ "$on_latest" -eq 1 ]; then
     # Vendor lag: distro hasn't shipped the fix yet (or backports under a different build).
