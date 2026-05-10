@@ -68,6 +68,9 @@ case "${distro_id:-}" in
             10) fixed_for_running="6.12.0-124.55.2.el10_1" ;;
         esac
         ;;
+    opensuse-tumbleweed)
+	    fixed_for_running="7.0.5"
+        ;;
 esac
 
 # --- 1. Vulnerable modules state ---
@@ -160,6 +163,8 @@ elif command -v rpm >/dev/null 2>&1 && rpm -q kernel >/dev/null 2>&1; then
     pkg_mgr=rpm
 elif command -v rpm >/dev/null 2>&1 && rpm -q kernel-core >/dev/null 2>&1; then
     pkg_mgr=rpm
+elif command -v rpm >/dev/null 2>&1 && rpm -q kernel-default >/dev/null 2>&1; then
+    pkg_mgr=rpm
 elif command -v dpkg >/dev/null 2>&1; then
     pkg_mgr=dpkg
 else
@@ -169,7 +174,9 @@ fi
 latest=""
 if [ "$pkg_mgr" = "rpm" ]; then
     latest=$(rpm -q kernel --last 2>/dev/null | head -1 | awk '{print $1}')
-    [ -z "$latest" ] && latest=$(rpm -q kernel-core --last 2>/dev/null | head -1 | awk '{print $1}')
+    [[ ! *kernel* =~ $latest ]] && latest=$(rpm -q kernel-core --last 2>/dev/null | head -1 | awk '{print $1}')
+    [[ ! *kernel* =~ $latest ]] && latest=$(rpm -q kernel-default --last 2>/dev/null | head -1 | awk '{print $1}')
+    latest=$(echo "$latest" | sed 's/kernel-[a-zA-Z\-]*//g')
     say "    installed: ${latest:-unknown}"
     say "    running:   $kernel"
     if [ -n "$latest" ] && ! echo "$latest" | grep -q "$kernel"; then
