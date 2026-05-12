@@ -76,9 +76,8 @@ required for the check itself. Applying mitigations does need root.
 
 ## Stopgap mitigation
 
-For CVE-2026-43500 (rxrpc) the upstream fix has lagged on some distros
-at time of writing. If you need to close the second exploit path before
-a kernel update is available, blacklist the modules:
+Use this when your distro hasn't shipped a kernel update yet, or when
+you can't reboot soon and need the reach-in modules unloaded:
 
 ```bash
 sudo tee /etc/modprobe.d/disable-dirty-frag.conf <<'EOF'
@@ -111,6 +110,7 @@ distro's tracker.
 - AlmaLinux advisory: [Dirty Frag](https://almalinux.org/blog/2026-05-07-dirty-frag/)
 - CloudLinux / KernelCare: [mitigation and kernel update](https://blog.cloudlinux.com/dirty-frag-mitigation-and-kernel-update)
 - cPanel: [security advisory](https://support.cpanel.net/hc/en-us/articles/40313772552727)
+- Forum thread: [Dirty Frag check script (linuxcommunity.io)](https://linuxcommunity.io/t/dirty-frag-cve-2026-43284-cve-2026-43500-check-script/7776)
 - Companion checker: [CVE-2026-31431-check](https://github.com/haydenjames/CVE-2026-31431-check)
 - Issues: [GitHub](https://github.com/haydenjames/dirty-frag-check/issues)
 
